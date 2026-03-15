@@ -1,7 +1,19 @@
+// Core types
 export * from './types.js';
-export { SuiteDefinitionSchema } from './schema.js';
+
+// Engine modules (Agent A)
 export { SuiteLoader } from './loader.js';
 export { Runner } from './runner.js';
-export type { RunnerOptions } from './runner.js';
-export { Scorer, scoreAutomatedKPI, calculateScenarioScore, calculateLayerScores } from './scorer.js';
-export { Reporter, toJSON, toTerminal } from './reporter.js';
+export { Scorer } from './scorer.js';
+export { Reporter } from './reporter.js';
+export { suiteSchema } from './schema.js';
+
+// Judge & Comparator (Agent B)
+export { Judge } from './judge.js';
+export { Comparator } from './comparator.js';
+
+// Adapters (Agent B)
+export { HttpAdapter } from './adapters/http.js';
+export { StdioAdapter } from './adapters/stdio.js';
+export { OpenClawAdapter } from './adapters/openclaw.js';
+export { createAdapter } from './adapters/types.js';

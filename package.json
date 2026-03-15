@@ -1,0 +1,34 @@
+{
+  "name": "sensei-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The open-source qualification engine for AI agents",
+  "workspaces": [
+    "packages/engine",
+    "packages/cli",
+    "packages/sdk"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint packages/*/src/**/*.ts",
+    "clean": "rm -rf packages/*/dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsup": "^8.4.0",
+    "vitest": "^3.0.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nymeria-ai/sensei.git"
+  },
+  "license": "MIT"
+}

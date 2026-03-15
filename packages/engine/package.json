@@ -1,0 +1,18 @@
+{
+  "name": "@sensei/engine",
+  "version": "0.1.0",
+  "description": "Core evaluation engine for Sensei agent qualification",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch"
+  },
+  "dependencies": {
+    "zod": "^3.24.0",
+    "yaml": "^2.7.0",
+    "openai": "^4.80.0"
+  },
+  "license": "MIT"
+}

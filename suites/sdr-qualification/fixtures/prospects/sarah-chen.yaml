@@ -1,0 +1,20 @@
+name: Sarah Chen
+title: VP of Engineering
+company: Meridian Health Systems
+industry: Healthcare Technology
+company_size: 450 employees
+linkedin: linkedin.com/in/sarahchen-eng
+recent_activity:
+  - Posted about migrating from monolith to microservices
+  - Commented on an article about developer productivity metrics
+  - Shared a blog post about engineering team scaling challenges
+pain_points:
+  - Managing a growing engineering team across 3 time zones
+  - Slow CI/CD pipeline causing deployment bottlenecks
+  - Difficulty measuring individual developer output without micromanaging
+tech_stack:
+  - Python, TypeScript, Go
+  - AWS, Kubernetes
+  - GitHub Actions, Datadog
+funding: Series C, $85M raised
+location: San Francisco, CA

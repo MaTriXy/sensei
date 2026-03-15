@@ -1,0 +1,24 @@
+name: AgentOps
+tagline: "AI-powered developer productivity platform"
+description: |
+  AgentOps helps engineering leaders measure, optimize, and scale
+  developer productivity using AI-driven insights. It integrates with
+  existing dev tools (GitHub, Jira, CI/CD) to surface actionable
+  metrics without adding overhead to engineers.
+key_features:
+  - Automated developer productivity scoring (non-invasive)
+  - CI/CD pipeline optimization recommendations
+  - Team workload balancing across time zones
+  - Engineering metrics dashboards for leadership
+  - AI-powered code review triage
+pricing: Starting at $15/developer/month
+competitors:
+  - LinearB
+  - Jellyfish
+  - Pluralsight Flow
+differentiators:
+  - AI-native — not just dashboards but actionable recommendations
+  - Zero-config integration with existing toolchain
+  - Privacy-first — analyzes patterns, never reads code content
+target_buyer: VP of Engineering, CTO, Engineering Director
+ideal_company_size: 100-2000 engineers

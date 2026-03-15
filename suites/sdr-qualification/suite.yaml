@@ -1,0 +1,359 @@
+id: sdr-qualification
+version: "1.0.0"
+name: "SDR Qualification Suite"
+description: >
+  Evaluates Sales Development Representative AI agents across cold outreach,
+  discovery call analysis, strategic reasoning, and self-improvement after feedback.
+
+defaults:
+  timeout_ms: 60000
+  judge_model: "gpt-4o"
+
+fixtures: ./fixtures
+
+scenarios:
+  # ─── Layer 1: Execution ────────────────────────────────────────────
+
+  - id: cold-email-personalization
+    name: "Cold Email Personalization"
+    layer: execution
+    description: "Write a personalized cold email to a VP of Engineering prospect"
+    input:
+      prompt: |
+        Write a personalized cold email to the following prospect.
+        Include a compelling subject line.
+        The email should be concise (under 200 words), reference specific
+        details about the prospect, and include a clear call-to-action.
+
+        Format your response as:
+        Subject: <subject line>
+
+        <email body>
+      context:
+        prospect_file: fixtures/prospects/sarah-chen.yaml
+        product_file: fixtures/products/agentops.yaml
+      fixtures:
+        prospect: fixtures/prospects/sarah-chen.yaml
+        product: fixtures/products/agentops.yaml
+    kpis:
+      - id: personalization
+        name: "Personalization Quality"
+        weight: 0.30
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: References 3+ specific prospect details naturally woven into the email
+               (e.g., migration project, team scaling, LinkedIn activity)
+            4: References 2 specific prospect details with good integration
+            3: References 1 specific detail beyond just name and title
+            2: Uses prospect name and title but otherwise generic
+            1: Fully generic template with no personalization
+
+      - id: subject-line
+        name: "Subject Line Quality"
+        weight: 0.20
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Compelling, personalized, curiosity-driving, under 60 chars
+            4: Personalized and relevant but not particularly compelling
+            3: Relevant to prospect's industry but generic
+            2: Generic sales subject line
+            1: Spammy, misleading, or missing
+
+      - id: call-to-action
+        name: "Call to Action Clarity"
+        weight: 0.20
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Specific, low-friction CTA with clear next step and time suggestion
+            4: Clear CTA with specific next step
+            3: CTA present but vague ("let's connect")
+            2: Weak or buried CTA
+            1: No CTA or inappropriate ask
+
+      - id: tone
+        name: "Professional Tone"
+        weight: 0.15
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Conversational, confident, peer-to-peer tone — not salesy
+            4: Professional and mostly natural
+            3: Acceptable but somewhat stiff or templated
+            2: Overly formal or overly casual
+            1: Inappropriate tone (pushy, desperate, or condescending)
+
+      - id: brevity
+        name: "Conciseness"
+        weight: 0.15
+        method: automated
+        config:
+          type: numeric-range
+          expected: { min: 50, max: 200 }
+          tolerance: 20
+
+  - id: discovery-call-analysis
+    name: "Discovery Call Analysis"
+    layer: execution
+    description: "Analyze an SDR discovery call transcript and extract key insights"
+    input:
+      prompt: |
+        Analyze the following SDR discovery call transcript.
+        Provide a structured analysis including:
+        1. Key pain points identified
+        2. Budget/authority/need/timeline (BANT) assessment
+        3. Competitive landscape mentions
+        4. Recommended next steps
+        5. Overall call quality score (1-10) with justification
+      context:
+        transcript_file: fixtures/transcripts/discovery-call.yaml
+      fixtures:
+        transcript: fixtures/transcripts/discovery-call.yaml
+    kpis:
+      - id: pain-point-extraction
+        name: "Pain Point Identification"
+        weight: 0.30
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Identifies all key pain points with nuanced understanding
+               (migration velocity, measurement gap, hiring justification)
+            4: Identifies 2+ pain points with good context
+            3: Identifies primary pain point only
+            2: Mentions pain points superficially
+            1: Misses or mischaracterizes pain points
+
+      - id: bant-assessment
+        name: "BANT Framework Application"
+        weight: 0.25
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Complete BANT assessment with evidence from transcript for each dimension
+            4: Covers 3/4 BANT dimensions with evidence
+            3: Covers 2/4 BANT dimensions
+            2: Mentions BANT but analysis is shallow
+            1: No structured qualification framework applied
+
+      - id: competitive-intel
+        name: "Competitive Intelligence"
+        weight: 0.20
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Identifies competitor mention (LinearB), notes prospect's objection,
+               and suggests how to position against it
+            4: Identifies competitor and objection
+            3: Notes competitor mention without analysis
+            2: Misses competitive context
+            1: No competitive analysis
+
+      - id: next-steps
+        name: "Actionable Next Steps"
+        weight: 0.25
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Specific, prioritized next steps aligned with call outcomes
+               (demo setup, stakeholder inclusion, prep materials)
+            4: Clear next steps but missing prioritization or detail
+            3: Generic follow-up suggestions
+            2: Vague or incomplete recommendations
+            1: No actionable next steps
+
+  - id: email-sequence-design
+    name: "Multi-Touch Email Sequence"
+    layer: execution
+    description: "Design a 3-email outreach sequence for a cold prospect"
+    input:
+      prompt: |
+        Design a 3-email outreach sequence for the prospect below.
+        For each email, provide:
+        - Subject line
+        - Email body (under 150 words each)
+        - Recommended send timing (days after previous)
+        - Goal of the touch
+
+        The sequence should tell a coherent story and escalate appropriately.
+      context:
+        prospect_file: fixtures/prospects/sarah-chen.yaml
+        product_file: fixtures/products/agentops.yaml
+      fixtures:
+        prospect: fixtures/prospects/sarah-chen.yaml
+        product: fixtures/products/agentops.yaml
+    kpis:
+      - id: sequence-coherence
+        name: "Sequence Narrative Coherence"
+        weight: 0.35
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Clear narrative arc across 3 emails — each builds on the last,
+               escalates value, and has distinct positioning
+            4: Good progression with minor repetition
+            3: Emails work individually but don't build on each other
+            2: Repetitive or disconnected messages
+            1: No coherent sequence strategy
+
+      - id: sequence-personalization
+        name: "Sequence Personalization Depth"
+        weight: 0.35
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Each email introduces new personalization angles
+            4: Consistent personalization across sequence
+            3: First email personalized, follow-ups generic
+            2: Minimal personalization throughout
+            1: No personalization
+
+      - id: sequence-timing
+        name: "Timing and Escalation"
+        weight: 0.30
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Appropriate spacing (2-5 days), escalating CTAs, break-up email pattern
+            4: Good timing with clear escalation
+            3: Reasonable timing but flat escalation
+            2: Poor spacing or no escalation logic
+            1: No timing strategy
+
+  # ─── Layer 2: Reasoning ────────────────────────────────────────────
+
+  - id: explain-outreach-strategy
+    name: "Outreach Strategy Reasoning"
+    layer: reasoning
+    description: "Explain the strategic choices behind the cold email approach"
+    depends_on: cold-email-personalization
+    input:
+      prompt: |
+        Explain your strategic reasoning behind the cold email you wrote.
+        Address the following:
+        1. Why did you choose that specific subject line?
+        2. What personalization signals did you prioritize and why?
+        3. How did you tailor the value proposition to this specific prospect?
+        4. Why did you choose that particular call-to-action?
+        5. What alternative approaches did you consider and reject?
+      previous_scenario: cold-email-personalization
+    kpis:
+      - id: strategic-depth
+        name: "Strategic Reasoning Depth"
+        weight: 0.40
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Demonstrates deep understanding of SDR strategy — references
+               prospect research methodology, buyer psychology, and outreach best practices
+            4: Shows solid strategic thinking with specific justifications
+            3: Provides reasoning but relies on generic sales advice
+            2: Superficial explanations without strategic insight
+            1: Cannot articulate reasoning behind choices
+
+      - id: self-awareness
+        name: "Self-Awareness of Tradeoffs"
+        weight: 0.30
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Acknowledges tradeoffs, discusses alternatives considered and rejected
+               with clear reasoning for each decision
+            4: Discusses some alternatives with reasoning
+            3: Mentions tradeoffs without depth
+            2: Shows limited awareness of alternatives
+            1: No discussion of alternatives or tradeoffs
+
+      - id: prospect-insight
+        name: "Prospect Research Insight"
+        weight: 0.30
+        method: llm-judge
+        config:
+          max_score: 5
+          rubric: |
+            5: Shows sophisticated understanding of prospect's situation —
+               connects dots between company stage, role challenges, and product fit
+            4: Good understanding of prospect context
+            3: Basic prospect awareness
+            2: Surface-level prospect knowledge
+            1: No meaningful prospect insight
+
+  # ─── Layer 3: Self-Improvement ─────────────────────────────────────
+
+  - id: improve-cold-email
+    name: "Email Improvement After Feedback"
+    layer: self-improvement
+    description: "Revise the cold email based on specific feedback"
+    depends_on: cold-email-personalization
+    input:
+      prompt: |
+        Here is feedback on your cold email. Please revise the email
+        addressing each point:
+
+        1. The subject line is too long — shorten it to under 6 words
+        2. You focused too much on product features — lead with the prospect's
+           pain point about proving engineering bottlenecks to the board
+        3. The CTA asks for too much commitment — suggest a 10-minute call
+           instead of a full demo
+        4. Add a P.S. line with a relevant industry stat or social proof
+      feedback: |
+        Subject line too long. Too feature-focused. CTA too aggressive.
+        Missing social proof element.
+      previous_scenario: cold-email-personalization
+    kpis:
+      - id: feedback-incorporation
+        name: "Feedback Incorporation"
+        weight: 0.40
+        method: comparative-judge
+        config:
+          comparison_type: improvement
+          max_score: 5
+          rubric: |
+            5: All 4 feedback points addressed with high quality
+            4: 3/4 feedback points addressed well
+            3: 2/4 feedback points addressed
+            2: 1/4 feedback points addressed
+            1: Feedback largely ignored
+
+      - id: quality-preservation
+        name: "Quality Preservation"
+        weight: 0.30
+        method: comparative-judge
+        config:
+          comparison_type: consistency
+          max_score: 5
+          rubric: |
+            5: Original strengths fully preserved while incorporating all feedback
+            4: Most strengths preserved with minor regressions
+            3: Some original quality lost in revision
+            2: Significant quality regression
+            1: Revised version worse overall
+
+      - id: adaptation-quality
+        name: "Adaptation Approach"
+        weight: 0.30
+        method: comparative-judge
+        config:
+          comparison_type: adaptation
+          max_score: 5
+          rubric: |
+            5: Demonstrates sophisticated understanding of why changes improve the email —
+               adaptations go beyond literal feedback to improve holistically
+            4: Good adaptations that address spirit of feedback
+            3: Literal interpretation of feedback only
+            2: Mechanical changes without understanding
+            1: Changes don't reflect understanding of feedback

@@ -1,0 +1,40 @@
+call_id: disc-2024-001
+duration_minutes: 22
+sdr_name: Alex Rivera
+prospect_name: Sarah Chen
+prospect_title: VP of Engineering
+company: Meridian Health Systems
+outcome: Follow-up scheduled
+transcript:
+  - speaker: Alex
+    text: "Hi Sarah, thanks for taking the time today. I saw your LinkedIn post about the monolith-to-microservices migration — sounds like a big initiative."
+  - speaker: Sarah
+    text: "Yeah, it's been a journey. We're about 60% through and it's definitely slowed down our release cadence."
+  - speaker: Alex
+    text: "That's a common pain point during migrations. How are you currently tracking the impact on your team's velocity?"
+  - speaker: Sarah
+    text: "Honestly, we're mostly using Jira story points and gut feel. I know that's not great."
+  - speaker: Alex
+    text: "You'd be surprised how many engineering leaders say the same thing. What would it mean for you to have a clearer picture?"
+  - speaker: Sarah
+    text: "It would help me make the case to the board for two more senior hires. Right now I can't prove we're bottlenecked on people vs. process."
+  - speaker: Alex
+    text: "That makes sense. That's exactly what AgentOps helps with — we integrate with your GitHub and CI/CD to surface productivity patterns without any overhead to your engineers."
+  - speaker: Sarah
+    text: "We looked at LinearB last quarter but it felt too invasive. Engineers pushed back."
+  - speaker: Alex
+    text: "I hear that a lot. Our approach is privacy-first — we analyze patterns and flow metrics, never actual code content. Would it be useful if I set up a 15-minute demo with our solutions engineer who works with healthcare companies?"
+  - speaker: Sarah
+    text: "Sure, let's do it. Can you do next Tuesday afternoon?"
+  - speaker: Alex
+    text: "Absolutely. I'll send over a calendar invite. Before I do, is there anyone else on your team who should join?"
+  - speaker: Sarah
+    text: "Yeah, bring in my engineering manager, David Park. I'll forward him the details."
+  - speaker: Alex
+    text: "Perfect. I'll include a brief overview doc so David has context. Thanks again, Sarah."
+notes:
+  - Prospect has budget authority (VP level)
+  - Migration pain point aligns with product value prop
+  - Previous negative experience with competitor (LinearB) — privacy is key differentiator
+  - Next step: Demo with solutions engineer, Tuesday
+  - Additional stakeholder identified: David Park (Engineering Manager)

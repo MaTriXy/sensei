@@ -8,6 +8,9 @@ export { Scorer } from './scorer.js';
 export { Reporter } from './reporter.js';
 export { SuiteDefinitionSchema, SuiteDefinitionSchema as suiteSchema } from './schema.js';
 
+// Shared LLM client factory
+export { createLLMClient } from './llm-client.js';
+
 // Judge & Comparator (Agent B)
 export { Judge, buildJudgePrompt, parseVerdict, median } from './judge.js';
 export { Comparator } from './comparator.js';

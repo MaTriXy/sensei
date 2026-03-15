@@ -8,7 +8,9 @@
  */
 
 import OpenAI from 'openai';
+import pLimit from 'p-limit';
 import type { JudgeConfig, JudgeVerdict, KPIDefinition, ScenarioInput } from './types.js';
+import { createLLMClient } from './llm-client.js';
 
 // ─── Prompt Template ────────────────────────────────────────────────
 
@@ -49,33 +51,6 @@ Respond in JSON:
 }`;
 
   return { system, user };
-}
-
-// ─── LLM Client Factory ────────────────────────────────────────────
-
-function createLLMClient(config: JudgeConfig): OpenAI {
-  const apiKey = config.api_key ?? inferApiKey(config.provider);
-
-  if (config.provider === 'anthropic') {
-    return new OpenAI({
-      apiKey,
-      baseURL: config.base_url ?? 'https://api.anthropic.com/v1/',
-    });
-  }
-
-  if (config.provider === 'openai-compatible' && config.base_url) {
-    return new OpenAI({ apiKey, baseURL: config.base_url });
-  }
-
-  // Default: OpenAI
-  return new OpenAI({ apiKey });
-}
-
-function inferApiKey(provider: string): string {
-  if (provider === 'anthropic') {
-    return process.env.ANTHROPIC_API_KEY ?? '';
-  }
-  return process.env.OPENAI_API_KEY ?? '';
 }
 
 // ─── Core Judge ─────────────────────────────────────────────────────
@@ -140,17 +115,22 @@ function median(values: number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
+// Default concurrency limit for LLM judge calls to avoid rate-limiting (Fix #12)
+const DEFAULT_LLM_CONCURRENCY = 3;
+
 async function multiJudge(
   client: OpenAI,
   model: string,
   temperature: number,
   prompt: { system: string; user: string },
   maxRetries: number,
+  concurrencyLimit?: ReturnType<typeof pLimit>,
 ): Promise<JudgeVerdict> {
+  const limit = concurrencyLimit ?? pLimit(DEFAULT_LLM_CONCURRENCY);
   const verdicts = await Promise.all([
-    callJudge(client, model, temperature, prompt, maxRetries),
-    callJudge(client, model, temperature, prompt, maxRetries),
-    callJudge(client, model, temperature, prompt, maxRetries),
+    limit(() => callJudge(client, model, temperature, prompt, maxRetries)),
+    limit(() => callJudge(client, model, temperature, prompt, maxRetries)),
+    limit(() => callJudge(client, model, temperature, prompt, maxRetries)),
   ]);
 
   const medianScore = median(verdicts.map((v) => v.score));
@@ -175,6 +155,7 @@ export class Judge {
   private temperature: number;
   private maxRetries: number;
   private useMultiJudge: boolean;
+  private concurrencyLimit: ReturnType<typeof pLimit>;
 
   constructor(private config: JudgeConfig) {
     this.client = createLLMClient(config);
@@ -182,6 +163,8 @@ export class Judge {
     this.temperature = config.temperature ?? 0.0;
     this.maxRetries = config.max_retries ?? 3;
     this.useMultiJudge = config.multi_judge ?? false;
+    // Rate limiter shared across all evaluations on this Judge instance (Fix #12)
+    this.concurrencyLimit = pLimit(DEFAULT_LLM_CONCURRENCY);
   }
 
   async evaluate(opts: {
@@ -197,10 +180,15 @@ export class Judge {
     });
 
     if (this.useMultiJudge) {
-      return multiJudge(this.client, this.model, this.temperature, prompt, this.maxRetries);
+      return multiJudge(
+        this.client, this.model, this.temperature, prompt,
+        this.maxRetries, this.concurrencyLimit,
+      );
     }
 
-    return callJudge(this.client, this.model, this.temperature, prompt, this.maxRetries);
+    return this.concurrencyLimit(() =>
+      callJudge(this.client, this.model, this.temperature, prompt, this.maxRetries),
+    );
   }
 }
 

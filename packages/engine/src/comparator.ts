@@ -6,7 +6,9 @@
  */
 
 import OpenAI from 'openai';
+import pLimit from 'p-limit';
 import type { JudgeConfig, JudgeVerdict, KPIDefinition } from './types.js';
+import { createLLMClient } from './llm-client.js';
 
 // ─── Comparison Prompt ──────────────────────────────────────────────
 
@@ -54,40 +56,37 @@ Respond in JSON:
   return { system, user };
 }
 
-// ─── LLM Client ─────────────────────────────────────────────────────
-
-function createClient(config: JudgeConfig): OpenAI {
-  const apiKey =
-    config.api_key ??
-    (config.provider === 'anthropic'
-      ? process.env.ANTHROPIC_API_KEY ?? ''
-      : process.env.OPENAI_API_KEY ?? '');
-
-  if (config.provider === 'anthropic') {
-    return new OpenAI({ apiKey, baseURL: config.base_url ?? 'https://api.anthropic.com/v1/' });
-  }
-  if (config.provider === 'openai-compatible' && config.base_url) {
-    return new OpenAI({ apiKey, baseURL: config.base_url });
-  }
-  return new OpenAI({ apiKey });
-}
-
 // ─── Public API ─────────────────────────────────────────────────────
+
+// Concurrency limit shared across Comparator calls (Fix #12)
+const DEFAULT_LLM_CONCURRENCY = 3;
 
 export class Comparator {
   private client: OpenAI;
   private model: string;
   private temperature: number;
   private maxRetries: number;
+  private concurrencyLimit: ReturnType<typeof pLimit>;
 
   constructor(private config: JudgeConfig) {
-    this.client = createClient(config);
+    this.client = createLLMClient(config);
     this.model = config.model;
     this.temperature = config.temperature ?? 0.0;
     this.maxRetries = config.max_retries ?? 3;
+    this.concurrencyLimit = pLimit(DEFAULT_LLM_CONCURRENCY);
   }
 
   async compare(opts: {
+    kpi: KPIDefinition;
+    task: string;
+    feedback: string;
+    originalOutput: string;
+    revisedOutput: string;
+  }): Promise<JudgeVerdict> {
+    return this.concurrencyLimit(() => this._compare(opts));
+  }
+
+  private async _compare(opts: {
     kpi: KPIDefinition;
     task: string;
     feedback: string;

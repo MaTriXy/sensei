@@ -212,7 +212,7 @@ describe('E2E Pipeline: mock HTTP server → Runner → SuiteResult', () => {
     const result = await runner.run(suite);
 
     // ── Structure ──
-    expect(result.suite_id).toBe('sdr-qualification');
+    expect(result.suite_id).toBe('sdr-qualification@1.0.0');
     expect(result.suite_version).toBe('1.0.0');
     expect(result.agent_id).toBe('http');
     expect(result.timestamp).toBeTruthy();

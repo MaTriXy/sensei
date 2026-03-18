@@ -94,6 +94,7 @@ export const SuiteDefinitionSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   version: z.string().min(1),
+  namespace: z.string().min(1).optional(),
   description: z.string().optional(),
   agent: AgentConfigSchema.optional(),
   judge: JudgeConfigSchema.optional(),

@@ -53,7 +53,7 @@ describe('Runner', () => {
     expect(adapter.send).toHaveBeenCalled();
     expect(adapter.disconnect).toHaveBeenCalled();
 
-    expect(result.suite_id).toBe('test');
+    expect(result.suite_id).toBe('test@1.0.0');
     expect(result.scenarios).toHaveLength(1);
     expect(result.scenarios[0].score).toBe(100); // "mock" is in "mock response"
     expect(result.badge).toBeDefined();

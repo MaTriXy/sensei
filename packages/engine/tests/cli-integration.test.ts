@@ -134,7 +134,7 @@ describe('CLI Integration — Runner + HttpAdapter against mock server', () => {
     const result = await runner.run(suite);
 
     // Basic structure
-    expect(result.suite_id).toBe('cli-integration-test');
+    expect(result.suite_id).toBe('cli-integration-test@1.0.0');
     expect(result.agent_id).toBe('http');
     expect(result.scenarios).toHaveLength(3);
     expect(result.duration_ms).toBeGreaterThan(0);

@@ -9,11 +9,22 @@ export interface SuiteDefinition {
   id: string;
   name: string;
   version: string;
+  namespace?: string;
   description?: string;
   agent?: AgentConfig;
   judge?: JudgeConfig;
   scenarios: ScenarioDefinition[];
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * Build a fully-qualified suite ID: namespace/id@version.
+ * Falls back to id@version when no namespace is set,
+ * and plain id when version is also absent.
+ */
+export function qualifiedSuiteId(suite: Pick<SuiteDefinition, 'id' | 'version' | 'namespace'>): string {
+  const base = suite.namespace ? `${suite.namespace}/${suite.id}` : suite.id;
+  return suite.version ? `${base}@${suite.version}` : base;
 }
 
 export interface AgentConfig {
@@ -162,6 +173,43 @@ export interface JudgeVerdict {
   max_score: number;
   reasoning: string;
   confidence: number;         // 0-1
+}
+
+// ─── Progress Events ────────────────────────────────────────────
+
+export type ProgressEventType =
+  | 'suite:started'
+  | 'suite:completed'
+  | 'scenario:started'
+  | 'scenario:completed'
+  | 'scoring:started'
+  | 'scoring:completed';
+
+export interface ProgressEvent {
+  type: ProgressEventType;
+  timestamp: string;
+  elapsed_ms: number;
+  /** Completed count / total count for scenario-level events */
+  progress?: { completed: number; total: number };
+  /** Present on scenario:* events */
+  scenario_id?: string;
+  /** Present on scoring:* events */
+  kpi_id?: string;
+  /** Present on *:completed events with results */
+  score?: number;
+  /** Present on suite:completed */
+  badge?: Badge;
+}
+
+export type ProgressCallback = (event: ProgressEvent) => void;
+
+// ─── Concurrency ────────────────────────────────────────────────
+
+export interface ConcurrencyOptions {
+  /** Max concurrent scenario executions (default 5) */
+  scenarios?: number;
+  /** Max concurrent multi-judge LLM calls (default 3) */
+  judges?: number;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────

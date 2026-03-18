@@ -4,9 +4,13 @@ export * from './types.js';
 // Engine modules (Agent A)
 export { SuiteLoader } from './loader.js';
 export { Runner } from './runner.js';
+export type { RunnerOptions } from './runner.js';
 export { Scorer } from './scorer.js';
 export { Reporter } from './reporter.js';
 export { SuiteDefinitionSchema, SuiteDefinitionSchema as suiteSchema } from './schema.js';
+
+// Concurrency
+export { Semaphore } from './semaphore.js';
 
 // Shared LLM client factory
 export { createLLMClient } from './llm-client.js';

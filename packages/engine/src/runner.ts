@@ -1,7 +1,7 @@
 /**
  * Runner — orchestrates scenario execution for a suite.
  *
- * Flow: load suite → init adapter → health check → run scenarios by layer order → aggregate → return SuiteResult
+ * Flow: load suite → validate → init adapter → health check → run scenarios by layer order → aggregate → return SuiteResult
  */
 
 import type {
@@ -12,17 +12,26 @@ import type {
   SuiteResult,
   AgentAdapter,
   EvaluationLayer,
+  ConcurrencyOptions,
+  ProgressCallback,
+  ProgressEvent,
+  ProgressEventType,
 } from './types.js';
 import { scoreAutomatedKPI, calculateScenarioScore, calculateLayerScores } from './scorer.js';
-import { determineBadge } from './types.js';
+import { determineBadge, qualifiedSuiteId } from './types.js';
+import { Semaphore } from './semaphore.js';
 
 export interface RunnerOptions {
   /** Maximum retries per scenario on failure */
   retries?: number;
   /** Override per-scenario timeout (ms) */
   timeout_ms?: number;
-  /** Callback for progress updates */
+  /** Callback for progress updates (legacy — prefer onProgress) */
   onScenarioComplete?: (result: ScenarioResult, index: number, total: number) => void;
+  /** Rich progress callback with typed events */
+  onProgress?: ProgressCallback;
+  /** Concurrency limits */
+  concurrency?: ConcurrencyOptions;
   /** External KPI scorer for llm-judge KPIs */
   judgeScorer?: (
     kpi: import('./types.js').KPIDefinition,
@@ -40,6 +49,7 @@ export interface RunnerOptions {
 }
 
 const LAYER_ORDER: EvaluationLayer[] = ['execution', 'reasoning', 'self-improvement'];
+const DEFAULT_SCENARIO_CONCURRENCY = 5;
 
 export class Runner {
   private adapter: AgentAdapter;
@@ -52,6 +62,7 @@ export class Runner {
 
   async run(suite: SuiteDefinition): Promise<SuiteResult> {
     const startTime = Date.now();
+    const emit = this.createEmitter(startTime);
 
     // Validate depends_on references before running (M8)
     const scenarioIds = new Set(suite.scenarios.map((s) => s.id));
@@ -61,6 +72,17 @@ export class Runner {
     if (badDeps.length > 0) {
       throw new Error(`Unresolved depends_on references:\n  ${badDeps.join('\n  ')}`);
     }
+
+    // Validate scenario ID uniqueness within qualified suite
+    const seenScenarioIds = new Set<string>();
+    for (const s of suite.scenarios) {
+      if (seenScenarioIds.has(s.id)) {
+        throw new Error(`Duplicate scenario ID "${s.id}" in suite "${qualifiedSuiteId(suite)}"`);
+      }
+      seenScenarioIds.add(s.id);
+    }
+
+    emit('suite:started', { scenario_id: qualifiedSuiteId(suite) });
 
     // Connect and health check
     await this.adapter.connect();
@@ -76,21 +98,81 @@ export class Runner {
       // Track outputs for depends_on references
       const outputMap = new Map<string, string>();
       const results: ScenarioResult[] = [];
+      let completedCount = 0;
+      const total = sorted.length;
 
-      for (let i = 0; i < sorted.length; i++) {
-        const scenario = sorted[i];
-        const result = await this.runScenarioWithRetry(scenario, outputMap, suite);
-        outputMap.set(scenario.id, result.agent_output);
-        results.push(result);
-        this.options.onScenarioComplete?.(result, i, sorted.length);
+      // Group scenarios by layer for concurrent execution within each layer
+      const scenarioConcurrency = this.options.concurrency?.scenarios ?? DEFAULT_SCENARIO_CONCURRENCY;
+      const semaphore = new Semaphore(scenarioConcurrency);
+
+      // Process by layer groups — scenarios within the same layer can run concurrently
+      // (unless they have depends_on within the same layer, handled by outputMap wait)
+      for (const layer of LAYER_ORDER) {
+        const layerScenarios = sorted.filter((s) => s.layer === layer);
+        if (layerScenarios.length === 0) continue;
+
+        // Scenarios with depends_on must wait for their dependency.
+        // Within a layer, independent scenarios run concurrently.
+        const independent = layerScenarios.filter((s) => !s.depends_on || !scenarioIds.has(s.depends_on));
+        const dependent = layerScenarios.filter((s) => s.depends_on && scenarioIds.has(s.depends_on));
+
+        // Run independent scenarios concurrently with semaphore
+        const independentResults = await Promise.all(
+          independent.map((scenario) =>
+            semaphore.run(async () => {
+              emit('scenario:started', {
+                scenario_id: scenario.id,
+                progress: { completed: completedCount, total },
+              });
+
+              const result = await this.runScenarioWithRetry(scenario, outputMap, suite);
+              outputMap.set(scenario.id, result.agent_output);
+              completedCount++;
+
+              emit('scenario:completed', {
+                scenario_id: scenario.id,
+                score: result.score,
+                progress: { completed: completedCount, total },
+              });
+
+              this.options.onScenarioComplete?.(result, completedCount - 1, total);
+              return result;
+            }),
+          ),
+        );
+        results.push(...independentResults);
+
+        // Run dependent scenarios sequentially (they need prior outputs)
+        for (const scenario of dependent) {
+          const result = await semaphore.run(async () => {
+            emit('scenario:started', {
+              scenario_id: scenario.id,
+              progress: { completed: completedCount, total },
+            });
+
+            const r = await this.runScenarioWithRetry(scenario, outputMap, suite);
+            outputMap.set(scenario.id, r.agent_output);
+            completedCount++;
+
+            emit('scenario:completed', {
+              scenario_id: scenario.id,
+              score: r.score,
+              progress: { completed: completedCount, total },
+            });
+
+            this.options.onScenarioComplete?.(r, completedCount - 1, total);
+            return r;
+          });
+          results.push(result);
+        }
       }
 
       // Aggregate scores
       const scores = calculateLayerScores(results);
       const badge = determineBadge(scores.overall);
 
-      return {
-        suite_id: suite.id,
+      const suiteResult: SuiteResult = {
+        suite_id: qualifiedSuiteId(suite),
         suite_version: suite.version,
         agent_id: this.adapter.name,
         timestamp: new Date().toISOString(),
@@ -100,10 +182,30 @@ export class Runner {
         duration_ms: Date.now() - startTime,
         judge_model: suite.judge?.model,
       };
+
+      emit('suite:completed', {
+        score: scores.overall,
+        badge,
+      });
+
+      return suiteResult;
     } finally {
       // M1: Always disconnect adapter, even on error
       await this.adapter.disconnect();
     }
+  }
+
+  private createEmitter(startTime: number): (type: ProgressEventType, extra?: Partial<ProgressEvent>) => void {
+    return (type, extra = {}) => {
+      if (!this.options.onProgress) return;
+      const event: ProgressEvent = {
+        type,
+        timestamp: new Date().toISOString(),
+        elapsed_ms: Date.now() - startTime,
+        ...extra,
+      };
+      this.options.onProgress(event);
+    };
   }
 
   private sortByLayer(scenarios: ScenarioDefinition[]): ScenarioDefinition[] {
@@ -149,6 +251,7 @@ export class Runner {
     suite: SuiteDefinition,
   ): Promise<ScenarioResult> {
     const startTime = Date.now();
+    const emit = this.createEmitter(startTime);
 
     // Build prompt, injecting dependency output if needed
     let prompt = scenario.input.prompt;
@@ -177,28 +280,29 @@ export class Runner {
     // Score each KPI
     const kpis: KPIResult[] = [];
     for (const kpiDef of scenario.kpis) {
+      emit('scoring:started', { scenario_id: scenario.id, kpi_id: kpiDef.id });
+
+      let kpiResult: KPIResult;
       if (kpiDef.method === 'automated') {
-        kpis.push(scoreAutomatedKPI(kpiDef, output.response));
+        kpiResult = scoreAutomatedKPI(kpiDef, output.response);
       } else if (
         kpiDef.method === 'comparative-judge' &&
         this.options.comparatorScorer &&
         scenario.depends_on
       ) {
         const originalOutput = outputMap.get(scenario.depends_on) ?? '';
-        kpis.push(
-          await this.options.comparatorScorer(
-            kpiDef,
-            scenario.input.prompt,
-            scenario.input.feedback ?? '',
-            originalOutput,
-            output.response,
-          ),
+        kpiResult = await this.options.comparatorScorer(
+          kpiDef,
+          scenario.input.prompt,
+          scenario.input.feedback ?? '',
+          originalOutput,
+          output.response,
         );
       } else if (this.options.judgeScorer) {
-        kpis.push(await this.options.judgeScorer(kpiDef, output.response, prompt));
+        kpiResult = await this.options.judgeScorer(kpiDef, output.response, prompt);
       } else {
         // No judge available — score 0 with explanation
-        kpis.push({
+        kpiResult = {
           kpi_id: kpiDef.id,
           kpi_name: kpiDef.name,
           score: 0,
@@ -207,8 +311,11 @@ export class Runner {
           weight: kpiDef.weight,
           method: kpiDef.method,
           evidence: `No judge configured for ${kpiDef.method} scoring`,
-        });
+        };
       }
+
+      emit('scoring:completed', { scenario_id: scenario.id, kpi_id: kpiDef.id, score: kpiResult.score });
+      kpis.push(kpiResult);
     }
 
     const score = calculateScenarioScore(kpis);

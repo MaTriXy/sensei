@@ -170,14 +170,14 @@ export class Judge {
   private useMultiJudge: boolean;
   private concurrencyLimit: ReturnType<typeof pLimit>;
 
-  constructor(private config: JudgeConfig) {
+  constructor(private config: JudgeConfig, judgeConcurrency?: number) {
     this.client = createLLMClient(config);
     this.model = config.model;
     this.temperature = config.temperature ?? 0.0;
     this.maxRetries = config.max_retries ?? 3;
     this.useMultiJudge = config.multi_judge ?? false;
     // Rate limiter shared across all evaluations on this Judge instance (Fix #12)
-    this.concurrencyLimit = pLimit(DEFAULT_LLM_CONCURRENCY);
+    this.concurrencyLimit = pLimit(judgeConcurrency ?? DEFAULT_LLM_CONCURRENCY);
   }
 
   async evaluate(opts: {

@@ -5,12 +5,16 @@
  *  - Single judge evaluation
  *  - Multi-judge (3 parallel judges, median score)
  *  - OpenAI, Anthropic (via openai-compatible base_url), and generic openai-compatible providers
+ *  - Token-bucket rate limiting (configurable RPM/RPS)
+ *  - Exponential backoff retry with jitter (skips 400/401/403)
  */
 
 import OpenAI from 'openai';
 import pLimit from 'p-limit';
 import type { JudgeConfig, JudgeVerdict, KPIDefinition, ScenarioInput } from './types.js';
 import { createLLMClient } from './llm-client.js';
+import { TokenBucketRateLimiter } from './rate-limiter.js';
+import { withRetry, type RetryConfig } from './retry.js';
 
 // ─── Prompt Template ────────────────────────────────────────────────
 
@@ -63,12 +67,17 @@ async function callJudge(
   temperature: number,
   prompt: { system: string; user: string },
   maxRetries: number,
+  rateLimiter?: TokenBucketRateLimiter,
+  retryConfig?: RetryConfig,
 ): Promise<JudgeVerdict> {
-  let lastError: Error | undefined;
+  return withRetry(
+    async () => {
+      // Acquire rate limit token before making the call
+      if (rateLimiter) {
+        await rateLimiter.acquire();
+      }
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      // M7: Per-call timeout via AbortController
+      // Per-call timeout via AbortController
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), DEFAULT_CALL_TIMEOUT_MS);
       let completion;
@@ -90,12 +99,9 @@ async function callJudge(
 
       const raw = completion.choices[0]?.message?.content ?? '';
       return parseVerdict(raw);
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-    }
-  }
-
-  throw lastError ?? new Error('Judge call failed');
+    },
+    { maxRetries, ...retryConfig },
+  );
 }
 
 function parseVerdict(raw: string): JudgeVerdict {
@@ -138,12 +144,14 @@ async function multiJudge(
   prompt: { system: string; user: string },
   maxRetries: number,
   concurrencyLimit?: ReturnType<typeof pLimit>,
+  rateLimiter?: TokenBucketRateLimiter,
+  retryConfig?: RetryConfig,
 ): Promise<JudgeVerdict> {
   const limit = concurrencyLimit ?? pLimit(DEFAULT_LLM_CONCURRENCY);
   const verdicts = await Promise.all([
-    limit(() => callJudge(client, model, temperature, prompt, maxRetries)),
-    limit(() => callJudge(client, model, temperature, prompt, maxRetries)),
-    limit(() => callJudge(client, model, temperature, prompt, maxRetries)),
+    limit(() => callJudge(client, model, temperature, prompt, maxRetries, rateLimiter, retryConfig)),
+    limit(() => callJudge(client, model, temperature, prompt, maxRetries, rateLimiter, retryConfig)),
+    limit(() => callJudge(client, model, temperature, prompt, maxRetries, rateLimiter, retryConfig)),
   ]);
 
   const medianScore = median(verdicts.map((v) => v.score));
@@ -169,6 +177,8 @@ export class Judge {
   private maxRetries: number;
   private useMultiJudge: boolean;
   private concurrencyLimit: ReturnType<typeof pLimit>;
+  private rateLimiter?: TokenBucketRateLimiter;
+  private retryConfig?: RetryConfig;
 
   constructor(private config: JudgeConfig, judgeConcurrency?: number) {
     this.client = createLLMClient(config);
@@ -178,6 +188,18 @@ export class Judge {
     this.useMultiJudge = config.multi_judge ?? false;
     // Rate limiter shared across all evaluations on this Judge instance (Fix #12)
     this.concurrencyLimit = pLimit(judgeConcurrency ?? DEFAULT_LLM_CONCURRENCY);
+
+    if (config.rate_limit) {
+      this.rateLimiter = new TokenBucketRateLimiter(config.rate_limit);
+    }
+
+    if (config.retry) {
+      this.retryConfig = {
+        baseDelayMs: config.retry.base_delay_ms,
+        maxDelayMs: config.retry.max_delay_ms,
+        jitter: config.retry.jitter,
+      };
+    }
   }
 
   async evaluate(opts: {
@@ -195,13 +217,18 @@ export class Judge {
     if (this.useMultiJudge) {
       return multiJudge(
         this.client, this.model, this.temperature, prompt,
-        this.maxRetries, this.concurrencyLimit,
+        this.maxRetries, this.concurrencyLimit, this.rateLimiter, this.retryConfig,
       );
     }
 
     return this.concurrencyLimit(() =>
-      callJudge(this.client, this.model, this.temperature, prompt, this.maxRetries),
+      callJudge(this.client, this.model, this.temperature, prompt, this.maxRetries, this.rateLimiter, this.retryConfig),
     );
+  }
+
+  /** Dispose of rate limiter timers. Call when done with this Judge instance. */
+  dispose(): void {
+    this.rateLimiter?.dispose();
   }
 }
 

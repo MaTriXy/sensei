@@ -45,6 +45,15 @@ export interface JudgeConfig {
   temperature?: number;       // Default 0.0
   max_retries?: number;       // Default 3
   multi_judge?: boolean;      // Use 3 judges, take median
+  rate_limit?: {
+    rpm?: number;             // Requests per minute (default: 60)
+    rps?: number;             // Requests per second (overrides rpm-derived rate)
+  };
+  retry?: {
+    base_delay_ms?: number;   // Base delay before first retry (default: 500)
+    max_delay_ms?: number;    // Maximum delay cap (default: 30000)
+    jitter?: number;          // Jitter factor 0-1 (default: 0.3)
+  };
 }
 
 // ─── Scenario ────────────────────────────────────────────────────────

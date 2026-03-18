@@ -19,6 +19,10 @@ export { createLLMClient } from './llm-client.js';
 export { Judge, buildJudgePrompt, parseVerdict, median } from './judge.js';
 export { Comparator } from './comparator.js';
 
+// Rate limiting & retry
+export { TokenBucketRateLimiter, type RateLimiterConfig } from './rate-limiter.js';
+export { withRetry, isRetryableError, computeDelay, type RetryConfig } from './retry.js';
+
 // Adapters (Agent B)
 export { HttpAdapter } from './adapters/http.js';
 export { StdioAdapter } from './adapters/stdio.js';

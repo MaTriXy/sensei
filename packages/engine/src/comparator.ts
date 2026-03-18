@@ -3,12 +3,16 @@
  *
  * Uses the LLM judge to compare an agent's original output with its
  * revised output after feedback, scoring improvement quality.
+ *
+ * Supports token-bucket rate limiting and exponential backoff retry.
  */
 
 import OpenAI from 'openai';
 import pLimit from 'p-limit';
 import type { JudgeConfig, JudgeVerdict, KPIDefinition } from './types.js';
 import { createLLMClient } from './llm-client.js';
+import { TokenBucketRateLimiter } from './rate-limiter.js';
+import { withRetry, type RetryConfig } from './retry.js';
 
 // ─── Comparison Prompt ──────────────────────────────────────────────
 
@@ -67,6 +71,8 @@ export class Comparator {
   private temperature: number;
   private maxRetries: number;
   private concurrencyLimit: ReturnType<typeof pLimit>;
+  private rateLimiter?: TokenBucketRateLimiter;
+  private retryConfig?: RetryConfig;
 
   constructor(private config: JudgeConfig) {
     this.client = createLLMClient(config);
@@ -74,6 +80,18 @@ export class Comparator {
     this.temperature = config.temperature ?? 0.0;
     this.maxRetries = config.max_retries ?? 3;
     this.concurrencyLimit = pLimit(DEFAULT_LLM_CONCURRENCY);
+
+    if (config.rate_limit) {
+      this.rateLimiter = new TokenBucketRateLimiter(config.rate_limit);
+    }
+
+    if (config.retry) {
+      this.retryConfig = {
+        baseDelayMs: config.retry.base_delay_ms,
+        maxDelayMs: config.retry.max_delay_ms,
+        jitter: config.retry.jitter,
+      };
+    }
   }
 
   async compare(opts: {
@@ -94,10 +112,13 @@ export class Comparator {
     revisedOutput: string;
   }): Promise<JudgeVerdict> {
     const prompt = buildComparisonPrompt(opts);
-    let lastError: Error | undefined;
 
-    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      try {
+    return withRetry(
+      async () => {
+        if (this.rateLimiter) {
+          await this.rateLimiter.acquire();
+        }
+
         const completion = await this.client.chat.completions.create({
           model: this.model,
           temperature: this.temperature,
@@ -123,12 +144,14 @@ export class Comparator {
           reasoning: String(parsed.reasoning ?? ''),
           confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0.5)),
         };
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-      }
-    }
+      },
+      { maxRetries: this.maxRetries, ...this.retryConfig },
+    );
+  }
 
-    throw lastError ?? new Error('Comparator call failed');
+  /** Dispose of rate limiter timers. Call when done with this Comparator instance. */
+  dispose(): void {
+    this.rateLimiter?.dispose();
   }
 }
 

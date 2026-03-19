@@ -58,6 +58,20 @@ export const ScenarioDefinitionSchema = z.object({
   depends_on: z.string().optional(),
 });
 
+// ─── Scenario Pool ──────────────────────────────────────────────────
+
+export const ScenarioPoolSchema = z.object({
+  pool: z.object({
+    id: z.string().min(1),
+    count: z.number().int().min(0),
+    seed: z.number().int().nullable().optional(),
+    scenarios: z.array(ScenarioDefinitionSchema).min(1),
+  }),
+});
+
+/** A single entry: either a regular scenario or a pool wrapper. */
+export const ScenarioEntrySchema = z.union([ScenarioDefinitionSchema, ScenarioPoolSchema]);
+
 // ─── Agent Config ────────────────────────────────────────────────────
 
 export const AgentConfigSchema = z.object({
@@ -99,6 +113,6 @@ export const SuiteDefinitionSchema = z.object({
   agent: AgentConfigSchema.optional(),
   judge: JudgeConfigSchema.optional(),
   defaults: SuiteDefaultsSchema,
-  scenarios: z.array(ScenarioDefinitionSchema).min(1),
+  scenarios: z.array(ScenarioEntrySchema).min(1),
   metadata: z.record(z.unknown()).optional(),
 });

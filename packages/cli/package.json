@@ -17,5 +17,8 @@
     "ora": "^8.0.0",
     "yaml": "^2.7.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -12,5 +12,8 @@
   "dependencies": {
     "@mondaycom/sensei-engine": "*"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }

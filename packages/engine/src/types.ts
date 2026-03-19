@@ -56,6 +56,18 @@ export interface JudgeConfig {
   };
 }
 
+// ─── Scenario Pool ──────────────────────────────────────────────────
+
+export interface ScenarioPool {
+  id: string;
+  count: number;
+  seed?: number | null;         // Fixed seed for reproducible selection (null = random)
+  scenarios: ScenarioDefinition[];
+}
+
+/** A single entry in the suite's scenarios array: either a plain scenario or a pool wrapper. */
+export type ScenarioEntry = ScenarioDefinition | { pool: ScenarioPool };
+
 // ─── Scenario ────────────────────────────────────────────────────────
 
 export interface ScenarioDefinition {

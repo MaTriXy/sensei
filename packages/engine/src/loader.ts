@@ -12,7 +12,7 @@ import { resolve, dirname } from 'node:path';
 import { parse as parseYAML, YAMLParseError } from 'yaml';
 import { ZodError } from 'zod';
 import { SuiteDefinitionSchema } from './schema.js';
-import type { SuiteDefinition, ScenarioDefinition } from './types.js';
+import type { SuiteDefinition, ScenarioDefinition, ScenarioEntry, ScenarioPool } from './types.js';
 
 export class SuiteLoader {
   /**
@@ -28,6 +28,9 @@ export class SuiteLoader {
       throw new Error(`Failed to read suite file "${filePath}": ${message}`);
     }
     const suite = this.loadString(content, filePath);
+
+    // Resolve scenario pools before fixture resolution
+    resolvePools(suite);
 
     // Fix #2: Resolve fixture file references and load their content
     const suiteDir = dirname(resolve(filePath));
@@ -62,7 +65,10 @@ export class SuiteLoader {
     }
 
     try {
-      return SuiteDefinitionSchema.parse(raw);
+      const suite = SuiteDefinitionSchema.parse(raw) as SuiteDefinition & { scenarios: ScenarioEntry[] };
+      // Resolve pools so the returned suite has a flat ScenarioDefinition[]
+      resolvePools(suite);
+      return suite as SuiteDefinition;
     } catch (err) {
       if (err instanceof ZodError) {
         const issues = err.issues
@@ -125,4 +131,78 @@ export class SuiteLoader {
       }
     }
   }
+}
+
+// ─── Scenario Pool Resolution ───────────────────────────────────────
+
+/**
+ * Seeded PRNG — mulberry32.
+ * Returns a function that produces a float in [0, 1) on each call.
+ */
+function mulberry32(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Fisher-Yates shuffle using a supplied random function. */
+function shuffle<T>(arr: T[], rand: () => number): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Type guard: is a ScenarioEntry a pool wrapper? */
+function isPool(entry: ScenarioEntry): entry is { pool: ScenarioPool } {
+  return 'pool' in entry && typeof (entry as any).pool === 'object';
+}
+
+/**
+ * Expand scenario pools into concrete ScenarioDefinition[] in-place.
+ * After this call, `suite.scenarios` contains only ScenarioDefinition items.
+ *
+ * @throws Error if a pool has count=0 or empty scenarios array
+ */
+export function resolvePools(suite: { scenarios: ScenarioEntry[] }): void {
+  const resolved: ScenarioDefinition[] = [];
+
+  for (const entry of suite.scenarios) {
+    if (!isPool(entry)) {
+      resolved.push(entry);
+      continue;
+    }
+
+    const pool = entry.pool;
+
+    if (pool.scenarios.length === 0) {
+      throw new Error(`Scenario pool "${pool.id}" has no scenarios`);
+    }
+
+    if (pool.count === 0) {
+      throw new Error(`Scenario pool "${pool.id}" has count=0`);
+    }
+
+    const count = Math.min(pool.count, pool.scenarios.length);
+    if (pool.count > pool.scenarios.length) {
+      console.warn(
+        `Pool "${pool.id}": count (${pool.count}) exceeds pool size (${pool.scenarios.length}), clamping to ${pool.scenarios.length}`,
+      );
+    }
+
+    const rand = pool.seed != null
+      ? mulberry32(pool.seed)
+      : Math.random.bind(Math);
+
+    const shuffled = shuffle(pool.scenarios, rand);
+    resolved.push(...shuffled.slice(0, count));
+  }
+
+  (suite as any).scenarios = resolved;
 }
